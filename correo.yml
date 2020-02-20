@@ -1,0 +1,87 @@
+---
+- hosts: linux
+  remote_user: admin
+  become: yes
+  vars_files:
+  - "./variables.yml"
+
+  tasks:
+  - name: EPEL repository check
+    yum:
+      name: epel-release
+      state: present
+
+  - name: Packages instalation
+    yum:
+      name: "{{ packages }}"
+      state: latest
+
+  - name: Template for postfix
+    template:
+      src: ./postfix-main.j2
+      dest: /etc/postfix/main.cf
+      mode: 0640
+      owner: root
+      group: root
+    notify: Restart postfix service
+
+  - name: Check postfix service state
+    service:
+      name: postfix
+      state: started
+      enabled: yes
+
+  - name: Dovecot configuration file
+    lineinfile:
+      path: /etc/dovecot/dovecot.conf
+      line: 'protocols= imap pop3 lmtp'
+    notify: Restart dovecot service
+ 
+  - name: Copy dovecot mail configuration
+    copy:
+      src: ./10-mail.conf
+      dest: /etc/dovecot/conf.d/10-mail.conf
+      mode: 0640
+      owner: root
+      group: root
+    notify: Restart dovecot service
+
+  - name: Check dovecot service state
+    service:
+      name: dovecot
+      state: started
+      enabled: yes
+
+  - name: Squirrelmail configuration
+    template:
+      src: ./squirrelmail.conf.j2
+      dest: /etc/squirrelmail/config.php
+
+  - name: Check httpd state
+    service:
+      name: httpd
+      state: started
+      enabled: yes
+
+  - name: Opening firewall ports
+    firewalld:
+      service: "{{ item }}"
+      state: enabled
+      permanent: yes
+      immediate: yes
+    loop:
+    - smtp
+    - http
+    - imap
+    - pop3
+
+  handlers:
+  - name: Restart postfix service
+    service:
+      name: postfix
+      state: restarted
+
+  - name: Restart dovecot service
+    service:
+      name: dovecot
+      state: restarted
